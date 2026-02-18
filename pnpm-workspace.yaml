@@ -1,0 +1,3 @@
+onlyBuiltDependencies:
+  - '@reown/appkit'
+  - keccak
