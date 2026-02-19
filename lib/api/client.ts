@@ -164,3 +164,45 @@ export async function submitSwapTx(
     body,
   })
 }
+
+/** Server-side sign and send Jupiter swap (Privy authorization context). No client popup. */
+export async function swapSignAndSend(
+  token: string,
+  executionId: string
+): Promise<{ swap_tx_hash: string }> {
+  return apiRequest<{ swap_tx_hash: string }>(
+    `/executions/${executionId}/swap-sign-and-send`,
+    { method: 'POST', token }
+  )
+}
+
+/** Payload for the client to sign (authorization signature). Same shape as Privy WalletApiRequestSignatureInput. */
+export interface SwapSignaturePayload {
+  version: 1
+  method: 'POST'
+  url: string
+  body: Record<string, unknown>
+  headers: { 'privy-app-id': string; 'privy-idempotency-key'?: string }
+}
+
+export async function getSwapSignaturePayload(
+  token: string,
+  executionId: string
+): Promise<{ payload: SwapSignaturePayload }> {
+  return apiRequest<{ payload: SwapSignaturePayload }>(
+    `/executions/${executionId}/swap-signature-payload`,
+    { token }
+  )
+}
+
+/** Execute swap using a client-provided authorization signature (no server JWT exchange). */
+export async function swapSignAndSendWithSignature(
+  token: string,
+  executionId: string,
+  signature: string
+): Promise<{ swap_tx_hash: string }> {
+  return apiRequest<{ swap_tx_hash: string }>(
+    `/executions/${executionId}/swap-sign-and-send-with-signature`,
+    { method: 'POST', token, body: { signature } }
+  )
+}

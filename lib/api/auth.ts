@@ -2,13 +2,14 @@ import { PrivyClient } from '@privy-io/node'
 
 let privyClient: PrivyClient | null = null
 
-function getPrivyClient(): PrivyClient {
+export function getPrivyClient(): PrivyClient {
   if (!privyClient) {
     const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID
-    const appSecret =
-      process.env.PRIVY_APP_SECRET ?? process.env.NEXT_PUBLIC_PRIVY_SECRET_KEY
+    const appSecret = process.env.PRIVY_APP_SECRET
     if (!appId || !appSecret) {
-      throw new Error('Missing NEXT_PUBLIC_PRIVY_APP_ID or PRIVY_APP_SECRET')
+      throw new Error(
+        'Missing NEXT_PUBLIC_PRIVY_APP_ID or PRIVY_APP_SECRET (server-side only; do not use NEXT_PUBLIC_ for the secret)'
+      )
     }
     privyClient = new PrivyClient({ appId, appSecret })
   }

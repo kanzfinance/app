@@ -3,12 +3,15 @@
 import { useState, useCallback } from 'react'
 import { usePrivy } from '@privy-io/react-auth'
 import { useWallets } from '@privy-io/react-auth'
-import { useWallets as useSolanaWallets } from '@privy-io/react-auth/solana'
+import { useWallets as useSolanaWallets, useSignAndSendTransaction } from '@privy-io/react-auth/solana'
+import bs58 from 'bs58'
 import {
   createExecution,
   getExecution,
   getBridgePayload,
   submitEvmTx,
+  getSwapPayload,
+  submitSwapTx,
   type ExecutionResponse,
 } from '@/lib/api/client'
 import { ExecutionStatus } from '@/components/ExecutionStatus'
@@ -25,6 +28,7 @@ export function BuyFlow() {
   const { getAccessToken } = usePrivy()
   const { wallets } = useWallets()
   const solanaWallets = useSolanaWallets()
+  const { signAndSendTransaction } = useSignAndSendTransaction()
   const [amount, setAmount] = useState('')
   const [sourceChain, setSourceChain] = useState<'base' | 'monad'>('base')
   const [execution, setExecution] = useState<ExecutionResponse | null>(null)
@@ -167,7 +171,37 @@ export function BuyFlow() {
         setLoading(false)
         return
       }
-      log('buy', 'bridge done (swap disabled)', { executionId })
+      log('buy', 'swap: user signs and sends (Privy modal)')
+      const swapToken = await getAccessToken()
+      if (!swapToken) {
+        setError('Session expired. Please refresh and try again.')
+        setLoading(false)
+        return
+      }
+      const { serialized_tx } = await getSwapPayload(swapToken, executionId)
+      const txBytes = Uint8Array.from(atob(serialized_tx), (c) => c.charCodeAt(0))
+      const solanaWallet = solanaWallets.wallets?.[0]
+      if (!solanaWallet) {
+        setError('Solana wallet not found. Refresh and try again.')
+        setLoading(false)
+        return
+      }
+      const { signature: sigBytes } = await signAndSendTransaction({
+        transaction: txBytes,
+        wallet: solanaWallet,
+        chain: 'solana:mainnet',
+      })
+      const swapTxHash = bs58.encode(sigBytes)
+      await submitSwapTx(swapToken, executionId, { swap_tx_hash: swapTxHash })
+      log('buy', 'swap sign-and-send completed')
+      e = await pollExecution(executionId)
+      if (e) setExecution(e)
+      while (e && e.status !== 'COMPLETED' && e.status !== 'FAILED') {
+        await new Promise((r) => setTimeout(r, POLL_MS))
+        e = await pollExecution(executionId)
+        if (e) setExecution(e)
+      }
+      log('buy', 'flow done', { executionId, status: e?.status })
     } catch (err) {
       log('buy', 'error', {
         err,
@@ -216,14 +250,14 @@ export function BuyFlow() {
         />
       </div>
       <p className="text-sm text-white/60">
-        Bridge USDC from your EVM wallet to <strong>your Solana wallet</strong> only. No swap.
+        Bridge USDC from Base, then auto-swap to GOLD on Solana (no extra confirmation for swap).
       </p>
       <button
         onClick={handleBuy}
         disabled={loading}
         className="w-full py-3 bg-white text-black font-semibold rounded-lg hover:bg-gray-200 disabled:opacity-50"
       >
-        {loading ? 'Processing…' : 'Bridge USDC only'}
+        {loading ? 'Processing…' : 'Bridge & swap to GOLD'}
       </button>
       {error && <p className="text-sm text-red-400">{error}</p>}
       {execution && <ExecutionStatus execution={execution} />}

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { TokenPrice } from '@/components/TokenPrice'
 import { PortfolioDrawer } from '@/components/PortfolioDrawer'
+import { ExportWalletButton } from '@/components/ExportWalletButton'
 import { BuyFlow } from '@/components/BuyFlow'
 import { BridgeSection } from '@/components/BridgeSection'
 
@@ -27,10 +28,13 @@ export default function Home() {
           <h1 className="text-2xl font-bold">kanz.finance</h1>
           <div className="flex items-center gap-2">
             {authenticated && (
-              <PortfolioDrawer
-                solanaAddress={solanaAddress}
-                evmAddress={evmAddress}
-              />
+              <>
+                <PortfolioDrawer
+                  solanaAddress={solanaAddress}
+                  evmAddress={evmAddress}
+                />
+                <ExportWalletButton solanaAddress={solanaAddress} />
+              </>
             )}
             {authenticated ? (
               <Button variant="outline" onClick={logout}>
