@@ -90,6 +90,10 @@ export default function Home() {
               <CardHeader className="p-4 pb-0">
                 <CardTitle>Buy GOLD</CardTitle>
               </CardHeader>
+              <CardContent className="p-4 pt-1 space-y-4">
+                <BuyFlow />
+                <BridgeSection />
+              </CardContent>
             </Card>
           </div>
         )}
