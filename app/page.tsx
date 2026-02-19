@@ -88,15 +88,8 @@ export default function Home() {
 
             <Card>
               <CardHeader className="p-4 pb-0">
-                <CardTitle>Bridge USDC (testing)</CardTitle>
+                <CardTitle>Buy GOLD</CardTitle>
               </CardHeader>
-              <CardContent className="p-4 pt-1 space-y-4">
-                <p className="text-sm text-amber-400/90 border border-amber-500/30 rounded-lg px-3 py-2">
-                  Buy GOLD is disabled to prevent fund loss. Only bridge Base USDC → Solana is available until the bridge is verified.
-                </p>
-                <BuyFlow />
-                <BridgeSection />
-              </CardContent>
             </Card>
           </div>
         )}
