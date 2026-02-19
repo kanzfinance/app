@@ -148,7 +148,7 @@ export async function GET(
     if (
       approvalAddress &&
       fromTokenAddress &&
-      fromTokenAddress.toLowerCase() !== zero.toLowerCase()
+      (fromTokenAddress ?? '').toLowerCase() !== zero.toLowerCase()
     ) {
       payload.approval_to = fromTokenAddress
       payload.approval_data = encodeApprove(approvalAddress, fromAmount)

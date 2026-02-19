@@ -183,7 +183,7 @@ export async function fetchEvmPortfolio(
       const name = meta?.name
       const icon = t.tokenAddress == null && chain === 'base' ? '/eth.png' : meta?.logo
 
-      const usdPrice = t.tokenPrices?.find((p) => p.currency?.toLowerCase() === 'usd')
+      const usdPrice = t.tokenPrices?.find((p) => (p?.currency ?? '').toLowerCase() === 'usd')
       const usdPriceNum = usdPrice?.value != null ? parseFloat(usdPrice.value) : undefined
       const usdValue = usdPriceNum != null ? balanceNum * usdPriceNum : undefined
       if (!isNative && usdValue === 0) continue

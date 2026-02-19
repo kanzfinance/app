@@ -50,14 +50,14 @@ export function validateItems(items: string[]): { valid: boolean; error?: string
     return { valid: false, error: 'Cannot have more than 255 items' }
   }
   
-  // Check for empty items
-  const emptyItems = items.filter(item => !item.trim())
+  // Check for empty items (guard against undefined)
+  const emptyItems = items.filter((item) => !(item ?? '').trim())
   if (emptyItems.length > 0) {
     return { valid: false, error: 'Items cannot be empty' }
   }
-  
-  // Check for duplicates
-  const uniqueItems = new Set(items.map(item => item.trim().toLowerCase()))
+
+  // Check for duplicates (guard against undefined before trim/toLowerCase)
+  const uniqueItems = new Set(items.map((item) => (item ?? '').trim().toLowerCase()))
   if (uniqueItems.size !== items.length) {
     return { valid: false, error: 'Items must be unique' }
   }

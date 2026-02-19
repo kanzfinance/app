@@ -14,7 +14,7 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url)
   const address = url.searchParams.get('address')?.trim()
-  const chain = url.searchParams.get('chain')?.toLowerCase()
+  const chain = (url.searchParams.get('chain') ?? '').toLowerCase()
   const network = chain ? CHAIN_TO_NETWORK[chain] : null
   if (!address || !network) {
     return NextResponse.json(

@@ -181,7 +181,7 @@ export function BuyFlow() {
       const { serialized_tx } = await getSwapPayload(swapToken, executionId)
       const txBytes = Uint8Array.from(atob(serialized_tx), (c) => c.charCodeAt(0))
       const solanaWallet = solanaWallets.wallets?.[0]
-      if (!solanaWallet) {
+      if (!solanaWallet?.address) {
         setError('Solana wallet not found. Refresh and try again.')
         setLoading(false)
         return

@@ -13,7 +13,7 @@ function link(hash: string, base: string) {
 export function ExecutionStatus({ execution }: { execution: ExecutionResponse }) {
   const { status, evm_tx_hash, bridge_message_id, swap_tx_hash, error_code, error_message, source_chain } =
     execution
-  const evmExplorer = source_chain === 'base' ? BASE_EXPLORER : MONAD_EXPLORER
+  const evmExplorer = (source_chain ?? '').toLowerCase() === 'base' ? BASE_EXPLORER : MONAD_EXPLORER
   return (
     <div className="p-4 border border-white/30 rounded-lg space-y-2">
       <p className="font-medium">
