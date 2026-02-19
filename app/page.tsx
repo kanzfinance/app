@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { TokenPrice } from '@/components/TokenPrice'
 import { PortfolioDrawer } from '@/components/PortfolioDrawer'
+import { BuyFlow } from '@/components/BuyFlow'
+import { BridgeSection } from '@/components/BridgeSection'
 
 export default function Home() {
   const { login, logout, ready, authenticated, evmAddress, solanaAddress } =
@@ -44,39 +46,54 @@ export default function Home() {
 
         {!authenticated ? (
           <p className="text-muted-foreground">
-            Connect a wallet to see your EVM and Solana addresses.
+            Connect a wallet to see your EVM and Solana addresses and to bridge USDC (bridge-only testing).
           </p>
         ) : (
-          <div className="space-y-4">
-            {evmAddress && (
-              <Card>
-                <CardHeader className="p-4 pb-0">
-                  <CardTitle>EVM Wallet</CardTitle>
-                </CardHeader>
-                <CardContent className="p-4 pt-1">
-                  <p className="font-mono text-lg break-all" title={evmAddress}>
-                    {evmAddress}
-                  </p>
-                </CardContent>
-              </Card>
-            )}
+          <div className="space-y-6">
+            <div className="space-y-4">
+              {evmAddress && (
+                <Card>
+                  <CardHeader className="p-4 pb-0">
+                    <CardTitle>EVM Wallet</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4 pt-1">
+                    <p className="font-mono text-lg break-all" title={evmAddress}>
+                      {evmAddress}
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
 
-            {solanaAddress && (
-              <Card>
-                <CardHeader className="p-4 pb-0">
-                  <CardTitle>Solana Wallet</CardTitle>
-                </CardHeader>
-                <CardContent className="p-4 pt-1">
-                  <p className="font-mono text-lg break-all" title={solanaAddress}>
-                    {solanaAddress}
-                  </p>
-                </CardContent>
-              </Card>
-            )}
+              {solanaAddress && (
+                <Card>
+                  <CardHeader className="p-4 pb-0">
+                    <CardTitle>Solana Wallet</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4 pt-1">
+                    <p className="font-mono text-lg break-all" title={solanaAddress}>
+                      {solanaAddress}
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
 
-            {!evmAddress && !solanaAddress && (
-              <p className="text-muted-foreground">No wallet addresses found.</p>
-            )}
+              {!evmAddress && !solanaAddress && (
+                <p className="text-muted-foreground">No wallet addresses found.</p>
+              )}
+            </div>
+
+            <Card>
+              <CardHeader className="p-4 pb-0">
+                <CardTitle>Bridge USDC (testing)</CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 pt-1 space-y-4">
+                <p className="text-sm text-amber-400/90 border border-amber-500/30 rounded-lg px-3 py-2">
+                  Buy GOLD is disabled to prevent fund loss. Only bridge Base USDC → Solana is available until the bridge is verified.
+                </p>
+                <BuyFlow />
+                <BridgeSection />
+              </CardContent>
+            </Card>
           </div>
         )}
       </div>

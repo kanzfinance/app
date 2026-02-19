@@ -1,30 +1,32 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback } from 'react'
 import { usePrivy } from '@privy-io/react-auth'
 import { useWallets } from '@privy-io/react-auth'
-import { useWallets as useSolanaWallets, useSignAndSendTransaction } from '@privy-io/react-auth/solana'
+import { useWallets as useSolanaWallets } from '@privy-io/react-auth/solana'
 import {
   createExecution,
   getExecution,
   getBridgePayload,
   submitEvmTx,
-  getSwapPayload,
-  submitSwapTx,
   type ExecutionResponse,
 } from '@/lib/api/client'
 import { ExecutionStatus } from '@/components/ExecutionStatus'
 
 const POLL_MS = 3000
+const DEBUG = true
+function log(scope: string, message: string, data?: unknown) {
+  if (DEBUG) {
+    console.log(`[Kanz:BuyFlow:${scope}]`, data !== undefined ? { message, data } : { message })
+  }
+}
 
 export function BuyFlow() {
   const { getAccessToken } = usePrivy()
   const { wallets } = useWallets()
   const solanaWallets = useSolanaWallets()
-  const { signAndSendTransaction } = useSignAndSendTransaction()
   const [amount, setAmount] = useState('')
   const [sourceChain, setSourceChain] = useState<'base' | 'monad'>('base')
-  const [bridgeProvider, setBridgeProvider] = useState<'lifi' | 'wormhole'>('lifi')
   const [execution, setExecution] = useState<ExecutionResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -32,8 +34,13 @@ export function BuyFlow() {
   const pollExecution = useCallback(
     async (executionId: string) => {
       const token = await getAccessToken()
-      if (!token) return
+      if (!token) {
+        log('poll', 'no token')
+        return
+      }
+      log('poll', 'getExecution', { executionId })
       const e = await getExecution(token, executionId)
+      log('poll', 'execution', { executionId, status: e?.status })
       setExecution(e)
       return e
     },
@@ -41,8 +48,10 @@ export function BuyFlow() {
   )
 
   const handleBuy = async () => {
+    log('buy', 'start', { amount: amount.trim(), sourceChain })
     const token = await getAccessToken()
     if (!token) {
+      log('buy', 'auth failed', { reason: 'no token' })
       setError('Not authenticated')
       return
     }
@@ -51,6 +60,7 @@ export function BuyFlow() {
         typeof (w as { getEthereumProvider?: () => Promise<unknown> }).getEthereumProvider === 'function'
     )
     const solanaWallet = solanaWallets.wallets?.[0]
+    log('buy', 'wallets', { evm: !!evmWallet?.address, solana: !!solanaWallet?.address })
     if (!evmWallet?.address) {
       setError('Connect an EVM wallet (MetaMask / WalletConnect) to bridge USDC.')
       return
@@ -67,11 +77,25 @@ export function BuyFlow() {
     setError(null)
     setLoading(true)
     try {
-      const created = await createExecution(token, {
-        amount_usdc: amt,
-        source_chain: sourceChain,
-      })
+      log('buy', 'createExecution', { amount_usdc: amt, source_chain: sourceChain })
+      let created
+      try {
+        created = await createExecution(token, {
+          amount_usdc: amt,
+          source_chain: sourceChain,
+        })
+        log('buy', 'createExecution resolved', { full: created })
+      } catch (createErr) {
+        log('buy', 'createExecution failed', {
+          err: createErr,
+          message: createErr instanceof Error ? createErr.message : String(createErr),
+          cause: createErr instanceof Error ? createErr.cause : undefined,
+          stack: createErr instanceof Error ? createErr.stack : undefined,
+        })
+        throw createErr
+      }
       const executionId = created.execution_id
+      log('buy', 'created', { executionId, status: created.status, is_duplicate: created.is_duplicate })
       const initial = await pollExecution(executionId)
       setExecution(initial ?? null)
       if (!initial) {
@@ -79,45 +103,58 @@ export function BuyFlow() {
         setLoading(false)
         return
       }
-      const bridgePayload = await getBridgePayload(
-        token,
-        executionId,
-        sourceChain === 'base' ? { bridge_provider: bridgeProvider } : undefined
-      )
+      const bridgeOpts = sourceChain === 'base' ? { bridge_provider: 'lifi' as const } : undefined
+      log('buy', 'getBridgePayload', { executionId, bridge_provider: bridgeOpts?.bridge_provider })
+      const bridgePayload = await getBridgePayload(token, executionId, bridgeOpts)
+      log('buy', 'bridgePayload', { to: bridgePayload.to, hasApproval: !!bridgePayload.approval_to })
       const provider = (await evmWallet.getEthereumProvider()) as {
         request: (args: { method: string; params?: unknown[] }) => Promise<unknown>
       }
       if (bridgePayload.approval_to && bridgePayload.approval_data) {
+        log('buy', 'approval tx start')
+        const approvalParams: Record<string, string> = {
+          to: String(bridgePayload.approval_to),
+          data: String(bridgePayload.approval_data),
+          value: String(bridgePayload.approval_value ?? '0'),
+        }
+        if (!approvalParams.value.startsWith('0x')) {
+          approvalParams.value = '0x' + BigInt(approvalParams.value).toString(16)
+        }
         const approvalTxHash = (await provider.request({
           method: 'eth_sendTransaction',
-          params: [
-            {
-              to: bridgePayload.approval_to,
-              data: bridgePayload.approval_data,
-              value: bridgePayload.approval_value ?? '0',
-            },
-          ],
+          params: [approvalParams],
         })) as string
+        log('buy', 'approval tx sent', { approvalTxHash })
         for (let i = 0; i < 30; i++) {
           await new Promise((r) => setTimeout(r, 1000))
           const receipt = await provider.request({
             method: 'eth_getTransactionReceipt',
             params: [approvalTxHash],
           })
-          if (receipt && typeof receipt === 'object' && (receipt as { blockNumber?: unknown }).blockNumber) break
+          if (receipt && typeof receipt === 'object' && (receipt as { blockNumber?: unknown }).blockNumber) {
+            log('buy', 'approval tx confirmed', { block: (receipt as { blockNumber?: unknown }).blockNumber })
+            break
+          }
         }
+      }
+      log('buy', 'bridge tx send')
+      let valueHex = String(bridgePayload.value ?? '0')
+      if (!valueHex.startsWith('0x')) {
+        valueHex = '0x' + BigInt(valueHex).toString(16)
+      }
+      const txParams: Record<string, string> = {
+        to: String(bridgePayload.to),
+        data: String(bridgePayload.data),
+        value: valueHex,
+      }
+      if (bridgePayload.gasLimit != null && bridgePayload.gasLimit !== '') {
+        txParams.gasLimit = String(bridgePayload.gasLimit)
       }
       const txHash = (await provider.request({
         method: 'eth_sendTransaction',
-        params: [
-          {
-            to: bridgePayload.to,
-            data: bridgePayload.data,
-            value: bridgePayload.value ?? '0',
-            gasLimit: bridgePayload.gasLimit,
-          },
-        ],
+        params: [txParams],
       })) as string
+      log('buy', 'bridge tx sent', { txHash })
       await submitEvmTx(token, executionId, txHash)
       let e: ExecutionResponse | undefined = await pollExecution(executionId)
       while (e && e.status !== 'BRIDGED' && e.status !== 'FAILED') {
@@ -126,24 +163,18 @@ export function BuyFlow() {
       }
       if (e) setExecution(e)
       if (e?.status === 'FAILED') {
+        log('buy', 'bridge failed', { status: e.status, error: e.error_message })
         setLoading(false)
         return
       }
-      const swapPayload = await getSwapPayload(token, executionId)
-      const decoded = Uint8Array.from(Buffer.from(swapPayload.serialized_tx, 'base64'))
-      const { signature } = await signAndSendTransaction({
-        transaction: decoded,
-        wallet: solanaWallet,
-      })
-      const bs58 = (await import('bs58')).default
-      const swapTxHashB58 = bs58.encode(signature)
-      await submitSwapTx(token, executionId, { swap_tx_hash: swapTxHashB58 })
-      while (e && e.status !== 'COMPLETED' && e.status !== 'FAILED') {
-        await new Promise((r) => setTimeout(r, POLL_MS))
-        e = await pollExecution(executionId)
-        if (e) setExecution(e)
-      }
+      log('buy', 'bridge done (swap disabled)', { executionId })
     } catch (err) {
+      log('buy', 'error', {
+        err,
+        message: err instanceof Error ? err.message : String(err),
+        cause: err instanceof Error ? err.cause : undefined,
+        stack: err instanceof Error ? err.stack : undefined,
+      })
       const msg = err instanceof Error ? err.message : 'Something went wrong'
       if (msg === 'missing_solana_wallet') {
         setError('Solana wallet is required to receive bridged USDC. Refresh the page so your wallets can sync, then try again.')
@@ -161,31 +192,17 @@ export function BuyFlow() {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-sm text-gray-400 mb-1">From chain</label>
-          <select
-            value={sourceChain}
-            onChange={(e) => setSourceChain(e.target.value as 'base' | 'monad')}
-            className="w-full px-4 py-2 bg-white/10 border border-white/30 rounded-lg text-white"
-            disabled={loading}
-          >
-            <option value="base">Base (LI.FI / Wormhole)</option>
-            <option value="monad">Monad (CCTP)</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm text-gray-400 mb-1">Bridge</label>
-          <select
-            value={bridgeProvider}
-            onChange={(e) => setBridgeProvider(e.target.value as 'lifi' | 'wormhole')}
-            className="w-full px-4 py-2 bg-white/10 border border-white/30 rounded-lg text-white"
-            disabled={loading || sourceChain !== 'base'}
-          >
-            <option value="lifi">LI.FI (best route)</option>
-            <option value="wormhole">Wormhole (via LI.FI)</option>
-          </select>
-        </div>
+      <div>
+        <label className="block text-sm text-gray-400 mb-1">From chain</label>
+        <select
+          value={sourceChain}
+          onChange={(e) => setSourceChain(e.target.value as 'base' | 'monad')}
+          className="w-full px-4 py-2 bg-white/10 border border-white/30 rounded-lg text-white"
+          disabled={loading}
+        >
+          <option value="base">Base (LiFi)</option>
+          <option value="monad">Monad (CCTP)</option>
+        </select>
       </div>
       <div>
         <label className="block text-sm text-gray-400 mb-1">USDC amount</label>
@@ -199,14 +216,14 @@ export function BuyFlow() {
         />
       </div>
       <p className="text-sm text-white/60">
-        USDC is bridged from your EVM wallet to <strong>your Solana wallet</strong>, then swapped to GOLD.
+        Bridge USDC from your EVM wallet to <strong>your Solana wallet</strong> only. No swap.
       </p>
       <button
         onClick={handleBuy}
         disabled={loading}
         className="w-full py-3 bg-white text-black font-semibold rounded-lg hover:bg-gray-200 disabled:opacity-50"
       >
-        {loading ? 'Processing…' : 'Buy (Bridge USDC → Swap to GOLD)'}
+        {loading ? 'Processing…' : 'Bridge USDC only'}
       </button>
       {error && <p className="text-sm text-red-400">{error}</p>}
       {execution && <ExecutionStatus execution={execution} />}

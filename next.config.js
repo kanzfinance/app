@@ -8,6 +8,7 @@ const nextConfig = {
       { protocol: 'https', hostname: 'arweave.net' },
       { protocol: 'https', hostname: 'ipfs.io' },
       { protocol: 'https', hostname: 'cdn.moralis.io' },
+      { protocol: 'https', hostname: 'logo.moralis.io' },
     ],
   },
 }

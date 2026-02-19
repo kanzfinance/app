@@ -1,4 +1,13 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
+// Use Next.js API routes (same-origin). No separate backend needed.
+const API_BASE = '/api'
+
+const DEBUG = true
+function log(scope: string, message: string, data?: unknown) {
+  if (DEBUG) {
+    const payload = data !== undefined ? { message, data } : { message }
+    console.log(`[Kanz:${scope}]`, payload)
+  }
+}
 
 export async function apiRequest<T>(
   path: string,
@@ -9,20 +18,47 @@ export async function apiRequest<T>(
   } = {}
 ): Promise<T> {
   const { method = 'GET', body, token } = options
+  const url = `${API_BASE}${path}`
+  log('api', 'request', { url, path, method, hasBody: body != null, hasToken: !!token })
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   }
   if (token) headers['Authorization'] = `Bearer ${token}`
-  const res = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers,
-    body: body != null ? JSON.stringify(body) : undefined,
-  })
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method,
+      headers,
+      body: body != null ? JSON.stringify(body) : undefined,
+    })
+  } catch (fetchErr) {
+    const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr)
+    log('api', 'fetch failed (no response)', {
+      url,
+      error: msg,
+      hint:
+        msg === 'Failed to fetch'
+          ? 'Check: 1) API server running at API_BASE? 2) CORS allows this origin. 3) NEXT_PUBLIC_API_URL in .env correct?'
+          : undefined,
+    })
+    throw fetchErr
+  }
+  const bodyText = await res.text()
+  log('api', 'response', { path, status: res.status, ok: res.ok, bodyLength: bodyText.length })
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    const err = (() => {
+      try {
+        return JSON.parse(bodyText) as { error?: string }
+      } catch {
+        return { error: bodyText.slice(0, 200) }
+      }
+    })()
+    log('api', 'error', { path, status: res.status, err, bodyPreview: bodyText.slice(0, 500) })
     throw new Error(err.error ?? `HTTP ${res.status}`)
   }
-  return res.json() as Promise<T>
+  const json = (bodyText ? JSON.parse(bodyText) : {}) as T
+  log('api', 'parsed', { path, fullResponse: json })
+  return json
 }
 
 export interface SyncResult {
@@ -86,9 +122,11 @@ export interface BridgePayloadResponse {
 export async function getBridgePayload(
   token: string,
   executionId: string,
-  opts?: { bridge_provider?: 'lifi' | 'wormhole' }
+  opts?: { bridge_provider?: 'lifi' }
 ): Promise<BridgePayloadResponse> {
-  const qs = opts?.bridge_provider ? `?bridge_provider=${encodeURIComponent(opts.bridge_provider)}` : ''
+  const bridgeProvider = opts?.bridge_provider ?? undefined
+  const qs = bridgeProvider ? `?bridge_provider=${encodeURIComponent(bridgeProvider)}` : ''
+  log('api', 'getBridgePayload', { executionId, bridge_provider: bridgeProvider ?? '(none)' })
   return apiRequest<BridgePayloadResponse>(`/executions/${executionId}/bridge-payload${qs}`, { token })
 }
 
